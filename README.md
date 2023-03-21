@@ -1,5 +1,6 @@
 # Architectural-view-in-three.js
 Initial project breakdown for 2023-03-21
+
 	1) Design and modeling of the house:
 Decide on the overall design and layout of the house, including the location of different rooms, furniture, and decorations.
 Model the house using a 3D modeling software, such as Blender or SketchUp, and export it to a format that can be imported into Three.js (e.g. OBJ, GLTF).
