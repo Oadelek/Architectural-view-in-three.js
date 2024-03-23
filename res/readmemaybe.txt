@@ -1,0 +1,1 @@
+almost all textures in here were generated via POV ray. "glasst" is an exception, as while it was generated using POV ray, it was made transparent via an external image editor. :)
