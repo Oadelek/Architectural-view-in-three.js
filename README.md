@@ -1,4 +1,6 @@
 # Architectural-view-in-three.js
+
+Developers: Benjamin, Oluwasesan & Xander
 Initial project breakdown for 2023-03-21
 
 	1) Design and modeling of the house:
