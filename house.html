@@ -1,0 +1,945 @@
+ <html>
+	<head>
+		<title>Get Out Of My House</title>
+	</head>
+	<body>
+		<script src="http://threejs.org/build/three.js"></script> 
+		<script id="vertexShader" type="x-shader/x-vertex">
+		varying vec2 vUv; //uv to share with the fragment shader
+        void main() {   
+           vUv = uv; //share uv
+           gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); //set gl_Position
+        }
+        </script>
+        <script id="fragmentShader" type="x-shader/x-fragment">
+		uniform float time; //time used for animation
+		uniform sampler2D tex; //fire texture used
+		
+        varying vec2 vUv; //uv from the vertex shader
+		
+		float rsin(float x, float min, float max) { //sine curve with a settable min and max. (i.e. keep the curve between these bounds)
+			return 0.5*((max-min)*sin(x)+max+min);
+		}
+		
+        void main() {
+			gl_FragColor = texture2D(tex, vec2(vUv.x+0.1*sin(vUv.y*6.28+rsin(vUv.y*3.14,1.0,1.3)*time),vUv.y)); 
+			gl_FragColor.xyz += vec3(rsin(time,-0.2,1.0),rsin(time,-0.2,0.2),0); //add red and green over time
+			//gl_FragColor.w *= 0.5 * (1.0 + sin(6.28*sin(vUv.x+time)) + cos(6.28*(vUv.y-0.2)));
+			gl_FragColor.w *= 5.0*(1.0-vUv.y)*vUv.x*(1.0-vUv.x); //change alpha
+        }
+        </script>
+		<script>
+			/*
+			Code by 
+			-Benjamin Theilmann Gohr
+			-Oluwasesan Adeleke
+			-Xander Davis
+			
+			this creates a house with things in it 
+			nice
+			*/
+	
+            //define the scene
+            const scene = new THREE.Scene();
+
+            //define a camera
+            const fov = 90; //field of view
+            const aspect = 4 / 3; //aspect ratios
+            const D = new THREE.Vector2(1, 100); //x=near,y=far
+
+            //define a renderer
+            const renderer = new THREE.WebGLRenderer();
+            renderer.setSize(800, 600);
+            document.body.appendChild(renderer.domElement);
+
+			//set skybox
+            scene.background = new THREE.CubeTextureLoader().load([
+			'res/sky_side.png',
+			'res/sky_side.png',
+			'res/sky_top.png',
+			'res/sky_bottom.png',
+			'res/sky_side.png',
+			'res/sky_side.png',
+		]);
+
+            //define a texture loader, which will be good for later
+            const loader = new THREE.TextureLoader()
+
+            //add some ambient lighting to prevent unlit parts being 100% black
+            const ambientLight = new THREE.AmbientLight(0x777777);
+            scene.add(ambientLight);
+			//light source
+			const dlight = new THREE.DirectionalLight( 0xffffff, 0.4 );
+			dlight.target.position.set(1,0,0);
+			scene.add(dlight);
+			//fog
+			scene.fog = new THREE.Fog(0x835231, 5.0, 30.0); //colour, near value, far value
+
+            // Create the player object
+            var playerGeometry = new THREE.SphereGeometry(0.1, 0.5, 0.1);
+            var playerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            var player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.position.set(0, 2, 0);
+            scene.add(player);
+
+            // Set initial camera position and look at player
+            var cameraPosition = new THREE.Vector3(0, 0.1, -0.1); // position the camera inside the player's head
+			var camera = new THREE.PerspectiveCamera(fov, aspect, D.x, D.y); //actual camera object
+            camera.position.x = player.position.x
+			camera.position.y = player.position.y
+			camera.position.z = player.position.z
+            player.add(camera);
+
+			//common variables
+			var geometry
+			var mesh
+			var material
+			
+			//define the floor dimensions. Positions are somewhat relative to this
+			var floorDim = new THREE.Vector2(35,40);
+			{
+			//define the floor
+			material = new THREE.MeshPhongMaterial( {color: 0x442200} ); //define a material
+			geometry = new THREE.PlaneGeometry(floorDim.x,floorDim.y); //define the geometry
+			mesh = new THREE.Mesh(geometry,material); //create a mesh using the previous two things
+			mesh.rotation.x = -Math.PI * 0.5; //correctly orient the plane
+			scene.add(mesh);
+			//define outside
+			var radi = 100 //determines how big the planes outside are from the house
+			material = new THREE.MeshPhongMaterial( {color: 0x009900} );
+			//4 meshes are used to create the outside plane, instead of 1 mesh which would conflict with the floor mesh inside
+			geometry = new THREE.PlaneGeometry(radi,floorDim.y+2*radi);
+			mesh = new THREE.Mesh(geometry,material);
+			mesh.rotation.x = -Math.PI * 0.5;
+			mesh.translateX(0.5*(floorDim.x+radi));
+			scene.add(mesh);
+			mesh = new THREE.Mesh(geometry,material);
+			mesh.rotation.x = -Math.PI * 0.5;
+			mesh.translateX(-0.5*(floorDim.x+radi));
+			scene.add(mesh);
+			geometry = new THREE.PlaneGeometry(radi,radi);
+			mesh = new THREE.Mesh(geometry,material);
+			mesh.rotation.x = -Math.PI * 0.5;
+			mesh.translateY(0.5*(floorDim.y+radi));
+			scene.add(mesh);
+			mesh = new THREE.Mesh(geometry,material);
+			mesh = new THREE.Mesh(geometry,material);
+			mesh.rotation.x = -Math.PI * 0.5;
+			mesh.translateY(-0.5*(floorDim.y+radi));
+			scene.add(mesh);
+			mesh = new THREE.Mesh(geometry,material);
+			}
+			
+			//wall height which can be accessed globally
+			var wallHeight = 13.0;
+			//now create some walls
+			{
+				var wallThick = 1.0 //defines the thickness of the outer walls
+				var wallTexture = loader.load("res/ceramic.png"); //use a ceramic texture for the walls
+				var wallMaterial = new THREE.MeshPhongMaterial({ map: wallTexture }); //wall material to reuse
+				
+				//similar parameters for glass
+				var glassThick = 0.5
+				var glassTexture = loader.load("res/glasst.png");
+				var glassMaterial = new THREE.MeshPhongMaterial({ map: glassTexture });
+				glassMaterial.transparent = true //this is important, so the glass is see-through
+				
+				//the bulk of the following involves defining a geometry, translating it into its correct position, then adding it to the scene
+				//back wall
+				geometry = new THREE.BoxGeometry(floorDim.x+wallThick*2,wallHeight,wallThick);
+				mesh = new THREE.Mesh(geometry,wallMaterial);
+				mesh.translateZ(0.5*(floorDim.y+wallThick));
+				mesh.translateY(0.5*wallHeight);
+				scene.add(mesh);
+				//front wall
+				geometry = new THREE.BoxGeometry(floorDim.x+wallThick*2,wallHeight,wallThick);
+				mesh = new THREE.Mesh(geometry,wallMaterial);
+				mesh.translateZ(-0.5*(floorDim.y+wallThick));
+				mesh.translateY(0.5*wallHeight);
+				scene.add(mesh);
+				//left wall
+				{
+					//left wall involves special behavior
+					/*
+					[0] = dist from left edge to left door edge
+					[1] = door width
+					[2] = dist from right door edge to left window edge
+					[3] = window width
+					[4] = SET THIS 0
+					these are all percentage values
+					*/
+					var lwalloff = [0.1,4.0/floorDim.y,0.2,15.0/floorDim.y,1.0]
+					/*
+					[0] = height from top of door/window to top
+					[1] = height from bottom to window bottom
+					*/
+					var wallh = [0.1,0.3,1.0]
+					//calculate correct widths
+					for (var i=0;i<4;i++) lwalloff[4] -= lwalloff[i];
+					for (var i=0;i<2;i++) wallh[2] -= wallh[i];
+					for (var i=0;i<5;i++) lwalloff[i] *= floorDim.y;
+					for (var i=0;i<3;i++) wallh[i] *= wallHeight;
+					//left to door
+					geometry = new THREE.BoxGeometry(wallThick,wallHeight,lwalloff[0]);
+					mesh = new THREE.Mesh(geometry,wallMaterial);
+					mesh.translateX(-0.5*(floorDim.x+wallThick));
+					mesh.translateZ(0.5*(floorDim.y-lwalloff[0]))
+					mesh.translateY(0.5*wallHeight);
+					scene.add(mesh);
+					//door
+					geometry = new THREE.BoxGeometry(wallThick,wallh[0],lwalloff[1]);
+					mesh = new THREE.Mesh(geometry,wallMaterial);
+					mesh.translateX(-0.5*(floorDim.x+wallThick));
+					mesh.translateZ(0.5*(floorDim.y-lwalloff[1])-lwalloff[0])
+					mesh.translateY(wallHeight-0.5*wallh[0]);
+					scene.add(mesh);
+					//door to window
+					geometry = new THREE.BoxGeometry(wallThick,wallHeight,lwalloff[2]);
+					mesh = new THREE.Mesh(geometry,wallMaterial);
+					mesh.translateX(-0.5*(floorDim.x+wallThick));
+					mesh.translateZ(0.5*(floorDim.y-lwalloff[2])-lwalloff[0]-lwalloff[1])
+					mesh.translateY(0.5*wallHeight);
+					scene.add(mesh);
+					//window (lower part, window, upper part)
+					geometry = new THREE.BoxGeometry(wallThick,wallh[1],lwalloff[3]);
+					mesh = new THREE.Mesh(geometry,wallMaterial);
+					mesh.translateX(-0.5*(floorDim.x+wallThick));
+					mesh.translateZ(0.5*(floorDim.y-lwalloff[3])-lwalloff[0]-lwalloff[1]-lwalloff[2])
+					mesh.translateY(0.5*wallh[1]);
+					scene.add(mesh);
+					
+					geometry = new THREE.BoxGeometry(glassThick,wallh[2],lwalloff[3]);
+					mesh = new THREE.Mesh(geometry,glassMaterial);
+					mesh.translateX(-0.5*(floorDim.x+wallThick));
+					mesh.translateZ(0.5*(floorDim.y-lwalloff[3])-lwalloff[0]-lwalloff[1]-lwalloff[2])
+					mesh.translateY(wallHeight-wallh[0]-wallh[2]*0.5);
+					scene.add(mesh);
+					
+					geometry = new THREE.BoxGeometry(wallThick,wallh[0],lwalloff[3]);
+					mesh = new THREE.Mesh(geometry,wallMaterial);
+					mesh.translateX(-0.5*(floorDim.x+wallThick));
+					mesh.translateZ(0.5*(floorDim.y-lwalloff[3])-lwalloff[0]-lwalloff[1]-lwalloff[2])
+					mesh.translateY(wallHeight-0.5*wallh[0]);
+					scene.add(mesh);
+					//window to right
+					geometry = new THREE.BoxGeometry(wallThick,wallHeight,lwalloff[4]);
+					mesh = new THREE.Mesh(geometry,wallMaterial);
+					mesh.translateX(-0.5*(floorDim.x+wallThick));
+					mesh.translateZ(0.5*(floorDim.y-lwalloff[4])-lwalloff[3]-lwalloff[2]-lwalloff[0]-lwalloff[1])
+					mesh.translateY(0.5*wallHeight);
+					scene.add(mesh);
+				}
+				//right wall
+				geometry = new THREE.BoxGeometry(wallThick,wallHeight,floorDim.y);
+				mesh = new THREE.Mesh(geometry,wallMaterial);
+				mesh.translateX(0.5*(floorDim.x+wallThick));
+				mesh.translateY(0.5*wallHeight);
+				scene.add(mesh);
+				//the ceiling which is also a wall
+				geometry = new THREE.BoxGeometry(floorDim.x+2*wallThick,wallThick*0.5,floorDim.y+2*wallThick);
+				mesh = new THREE.Mesh(geometry,wallMaterial);
+				mesh.translateY(wallHeight);
+				scene.add(mesh);
+			}
+			
+			
+			//lamp
+				function lamp() {
+				const lampGroup = new THREE.Group(); //define a group, which we can use to add objects
+				var lampHeight = 4; 
+				var lampRadius = 1;
+				
+				//define some geometries and some materials
+				var poleGeo = new THREE.CylinderGeometry(lampRadius * 0.2, lampRadius *0.2, lampHeight * 0.8);
+
+				const poleTex = loader.load('res/metal.png');
+				var poleMat = new THREE.MeshPhongMaterial( { map: poleTex} );
+
+				var shadeGeo = new THREE.CylinderGeometry(lampRadius * 0.3, lampRadius, lampRadius * 0.32,32,1,true); //the true at the end makes the cylinder omits the top and bottom circle
+
+				const shadeTex = loader.load('res/metal.png');
+				var shadeMat = new THREE.MeshPhongMaterial( { map: shadeTex} );
+                shadeMat.side = THREE.DoubleSide; //make sure the lamp shader renders from both sides
+				//shadeMat.transparent = true;
+                //shadeMat.opacity = 0.5;
+
+				var baseGeo = new THREE.CylinderGeometry(lampRadius *0.8,lampRadius*0.8, lampHeight * 0.1);
+				
+				const baseTex = loader.load('res/metal.png');
+				var baseMat = new THREE.MeshPhongMaterial( { map: baseTex} );
+
+                var bulbGeo = new THREE.SphereGeometry(lampRadius * 0.22);
+
+                var bulbMat = new THREE.MeshPhongMaterial({color: 0xe6deb0});
+                bulbMat.transparent = true; //make bulb translucent by modifying opacity
+				bulbMat.opacity = 0.5;
+
+                var pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.translateY((lampHeight * 0.8)/2);
+
+				lampGroup.add(pole);
+				
+                var shade = new THREE.Mesh(shadeGeo, shadeMat);
+                shade.translateY((lampHeight * 0.8) + ((lampHeight * 0.2)/2));
+
+				lampGroup.add(shade);
+				
+				lampGroup.add(new THREE.Mesh(baseGeo, baseMat));
+
+                var bulb = new THREE.Mesh(bulbGeo,bulbMat);
+                bulb.translateY(lampHeight * 0.82)
+
+				//add light to bulb
+                var bulbLight = new THREE.PointLight(0xe6deb0,1, 20)
+                bulbLight.position.set(bulb.position.x,bulb.position.y,bulb.position.z);
+
+                lampGroup.add(bulb);
+                lampGroup.add(bulbLight);
+
+				return lampGroup;
+			}
+			
+			
+			
+			//TV
+			
+				function tv(){
+					//define a group to return
+					const tvGroup = new THREE.Group();
+					//the rest of this are just simple geometries and translations
+					var screenGeo = new THREE.BoxGeometry(4, 3, 0.5);
+					var screenMat = new THREE.MeshPhongMaterial({color: 0x090a0a});
+
+					var screen = new THREE.Mesh(screenGeo,screenMat);
+
+					var frameGeoTop = new THREE.BoxGeometry(4.2, 0.1, 0.6);
+					var frameGeoBot = new THREE.BoxGeometry(4.2, 0.1, 0.6);
+					var frameGeoRig = new THREE.BoxGeometry(0.1, 3.2, 0.6);
+					var frameGeoLef = new THREE.BoxGeometry(0.1, 3.2, 0.6);
+
+					var frameMat = new THREE.MeshPhongMaterial({color: 0x1c1c1c});
+
+					var frameTop = new THREE.Mesh(frameGeoTop, frameMat);
+					var frameBot = new THREE.Mesh(frameGeoBot, frameMat);
+					var frameRig = new THREE.Mesh(frameGeoRig, frameMat);
+					var frameLef = new THREE.Mesh(frameGeoLef, frameMat);
+
+					frameTop.translateY(1.55);
+					frameBot.translateY(-1.55);
+					frameRig.translateX(2.05);
+					frameLef.translateX(-2.05);
+
+					tvGroup.add(frameTop);
+					tvGroup.add(frameBot);
+					tvGroup.add(frameRig);
+					tvGroup.add(frameLef);
+					tvGroup.add(screen);
+
+					return tvGroup;
+				}
+				
+				
+			
+			
+			//fire
+			{
+				var flameMaterial
+				
+				function flame(theta) {
+					var fire = loader.load("res/fire.png");
+					fire.wrapS = THREE.RepeatWrapping;
+					fire.wrapT = THREE.RepeatWrapping;
+					
+					var fireDim = new THREE.Vector2(10.0,5.0);
+					
+					//make the flame use the shader
+					flameMaterial = new THREE.ShaderMaterial( {
+						vertexShader: document.getElementById( 'vertexShader' ).textContent,//calls vertex shader code.
+						fragmentShader: document.getElementById( 'fragmentShader' ).textContent, //calls fragment shader code.
+						//make sure to initialize uniforms
+						uniforms: {
+							time:{value:0},
+							tex:{value:fire}
+						}
+					});
+					
+					var flameGroup = new THREE.Group();
+					flameMaterial.transparent = true;
+					flameMaterial.side = THREE.DoubleSide;
+					geometry = new THREE.PlaneGeometry(fireDim.x,fireDim.y);
+					mesh = new THREE.Mesh(geometry,flameMaterial);
+					mesh.rotation.y = theta;
+					flameGroup.add(mesh);
+					mesh = new THREE.Mesh(geometry,flameMaterial);
+					mesh.rotation.y = -theta;
+					flameGroup.add(mesh);
+					return flameGroup;
+				}
+				
+				var flameobj = flame(0.2);
+				flameobj.position.set(0,2.5,-floorDim.y*0.5);
+				scene.add(flameobj);
+			}
+			
+			//painting
+			
+				function painting(){
+					//this code is a slight modification of the TV code. Only difference is the screen is a texture
+					const paintGroup = new THREE.Group();
+					var picGeo = new THREE.BoxGeometry(6, 3, 0.1);
+					var picTex = loader.load('res/skill_issue.png');
+					var picMat = new THREE.MeshPhongMaterial( { map: picTex} );
+
+					var pic = new THREE.Mesh(picGeo,picMat);
+
+					var frameGeoTop = new THREE.BoxGeometry(6.2, 0.1, 0.2);
+					var frameGeoBot = new THREE.BoxGeometry(6.2, 0.1, 0.2);
+					var frameGeoRig = new THREE.BoxGeometry(0.1, 3.2, 0.2);
+					var frameGeoLef = new THREE.BoxGeometry(0.1, 3.2, 0.2);
+
+					var frameMat = new THREE.MeshPhongMaterial({color: 0x462B19});
+
+					var frameTop = new THREE.Mesh(frameGeoTop, frameMat);
+					var frameBot = new THREE.Mesh(frameGeoBot, frameMat);
+					var frameRig = new THREE.Mesh(frameGeoRig, frameMat);
+					var frameLef = new THREE.Mesh(frameGeoLef, frameMat);
+
+					frameTop.translateY(1.55);
+					frameBot.translateY(-1.55);
+					frameRig.translateX(3.05);
+					frameLef.translateX(-3.05);
+
+					paintGroup.add(frameTop);
+					paintGroup.add(frameBot);
+					paintGroup.add(frameRig);
+					paintGroup.add(frameLef);
+					paintGroup.add(pic);
+
+					return paintGroup;
+				}
+				
+			
+            
+			//Create Vase object
+			const vase = new THREE.Group(); //creates a group
+			const points = []; //create a line using some points
+			for (let i = 0; i < 10; i++) {
+				points.push(new THREE.Vector2(Math.sin(i * 0.2) * 10 + 5, (i - 5) * 2));
+			}
+			geometry = new THREE.LatheGeometry(points, 30, 6.3, 6.3);
+
+			//initialize textures
+			const texture = loader.load('res/plant.png')
+			const height = loader.load('res/height.png') //this is a height map
+
+
+			material = new THREE.MeshStandardMaterial({
+			color: 0xFCFFF4,
+			map: texture,
+			displacementMap: height,   
+			displacementScale: 1,
+			side: THREE.DoubleSide,
+				
+
+		   });
+		   //create a lathe to make a cone-like shape
+			const lathe = new THREE.Mesh(geometry, material);
+			lathe.scale.x = 0.05;
+			lathe.scale.y = 0.05;
+			lathe.scale.z = 0.05;
+		   
+			vase.add(lathe)
+			let angle = 100 //initial flower angle
+			for (let i = 0; i < 10; i++) {
+				const flower = createFlower();
+				flower.rotation.z = angle;      //create different facing angle for each iteration of the flowers
+				vase.add(flower)
+				angle -= 25
+			}
+			
+
+		function createFlower() {
+			const flower = new THREE.Group();
+
+			const coneGeometry = new THREE.ConeGeometry(0.07, 1.0, 76);
+			const coneMaterial = new THREE.MeshBasicMaterial({ color: 0x066904 });
+			const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+			cone.position.set(0, 4, 0); // position the cone at the bottom of the lathe
+			cone.rotation.x = 75; // rotate the cone to be facing upwards
+		   
+			cone.position.copy(lathe.position);
+
+			const torgeometry = new THREE.TorusKnotGeometry(6.916, 2.94, 103, 10, 7, 3);
+			const tormaterial = new THREE.MeshBasicMaterial({ color: 0xC60C0C });
+			const torusKnot = new THREE.Mesh(torgeometry, tormaterial);
+			torusKnot.scale.x = 0.01;
+			torusKnot.scale.y = 0.01;
+			torusKnot.scale.z = 0.01;
+			torusKnot.position.set(0, 0.45, -0.2)
+
+			flower.add(cone, torusKnot)
+			return flower
+
+		}
+
+		function createLRTable() {
+			const newTable = new THREE.Group();
+			const tableGeometry = new THREE.CylinderGeometry(12, 12, 1, 49, 64, false, 0, 6.3);
+
+			const vTex = loader.load("res/chair.png");
+			vTex.wrapS = THREE.RepeatWrapping;
+			vTex.wrapT = THREE.RepeatWrapping;
+			vTex.repeat.set(0.1, 0.1);
+
+
+			const materials = [
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex })
+			];
+
+			materials.transparent = true;
+			materials.opacity = 1.0;
+
+			const tableTop = new THREE.Mesh(tableGeometry, materials);
+			tableTop.scale.x = 0.2;
+			tableTop.scale.y = 0.2;
+			tableTop.scale.z = 0.2;
+
+			const TBgeometry = new THREE.CylinderGeometry(8, 13, 26, 64, 64, false, 0, 6.3);
+
+
+
+			const hTex = loader.load("res/chair.png");
+			hTex.wrapS = THREE.RepeatWrapping;
+			hTex.wrapT = THREE.RepeatWrapping;
+
+
+			const materialsB = [
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex })
+			];
+
+			const tableBase = new THREE.Mesh(TBgeometry, materialsB);
+			tableBase.scale.x = 0.08;
+			tableBase.scale.y = 0.08;
+			tableBase.scale.z = 0.08;
+
+
+			const tableTopPosition = new THREE.Vector3(0, 1, 0);
+			const tableBasePosition = new THREE.Vector3(0, 0, 0);
+
+			tableTop.position.copy(tableTopPosition);
+			tableBase.position.copy(tableBasePosition);
+
+			newTable.add(tableTop, tableBase)
+			return newTable;
+
+		}
+
+		function createDiningTable() {
+			const newTable = new THREE.Group();
+
+			const length = 12, width = 8;
+
+			const shape = new THREE.Shape();
+			shape.moveTo(0, 0);
+			shape.lineTo(0, width);
+			shape.lineTo(length, width);
+			shape.lineTo(length, 0);
+			shape.lineTo(0, 0);
+
+			const extrudeSettings = {
+				steps: 10,
+				depth: 1,
+				bevelEnabled: true,
+				bevelThickness: 1,
+				bevelSize: 5,
+				bevelOffset: 5,
+				bevelSegments: 5
+			};
+
+
+			const tableGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+			const vTex = loader.load("res/wood2.png");
+			vTex.wrapS = THREE.RepeatWrapping;
+			vTex.wrapT = THREE.RepeatWrapping;
+			vTex.repeat.set(0.1, 0.1);
+
+			const materials = [
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex })
+			];
+
+			const tableTop = new THREE.Mesh(tableGeometry, materials);
+			tableTop.scale.x = 0.2;
+			tableTop.scale.y = 0.2;
+			tableTop.scale.z = 0.2;
+			tableTop.rotation.x = -Math.PI / 2;
+
+
+			const hTex = loader.load("res/ceramic.png");
+			hTex.wrapS = THREE.RepeatWrapping;
+			hTex.wrapT = THREE.RepeatWrapping;
+		 
+			const materialBottom = [
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex })
+			];
+
+			const TBgeometry = new THREE.CylinderGeometry(4.56, 11.55, 26, 64, 64, false, 0, 6.3);
+			const tableBase = new THREE.Mesh(TBgeometry, materialBottom);
+			tableBase.scale.x = 0.08;
+			tableBase.scale.y = 0.08;
+			tableBase.scale.z = 0.08;
+
+			const TBSgeometry = new THREE.CylinderGeometry(4.56, 11.55, 26, 64, 64, false, 0, 6.3);
+			const tableBaseS = new THREE.Mesh(TBSgeometry, materialBottom);
+			tableBaseS.scale.x = 0.08;
+			tableBaseS.scale.y = 0.08;
+			tableBaseS.scale.z = 0.08;
+
+			const tableTopPosition = new THREE.Vector3(0, 0, 0);
+			const tableBasePosition = new THREE.Vector3(2.4, -0.9, -1);
+			const tableBaseSPosition = new THREE.Vector3(-0.7, -0.9, -1);
+
+			tableTop.position.copy(tableTopPosition);
+			tableBase.position.copy(tableBasePosition);
+			tableBaseS.position.copy(tableBaseSPosition);
+
+
+			newTable.add(tableTop, tableBase, tableBaseS)
+			return newTable;
+		}
+
+		function createSofa() {
+			const newChair = new THREE.Group();
+
+			//create back rest of the chair
+			const length = 10, width = 20;
+
+			const shape = new THREE.Shape();
+			shape.moveTo(0, 0);
+			shape.lineTo(0, width);
+			shape.lineTo(length, width);
+			shape.lineTo(length, 0);
+			shape.lineTo(0, 0);
+
+			const extrudeSettings = {
+				steps: 2,
+				depth: 3.6,
+				bevelEnabled: true,
+				bevelThickness: 4,
+				bevelSize: 9,
+				bevelOffset: 9,
+				bevelSegments: 50
+			};
+
+			const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+			const vTex = loader.load("res/chair.png");
+			vTex.wrapS = THREE.RepeatWrapping;
+			vTex.wrapT = THREE.RepeatWrapping;
+			vTex.repeat.set(0.1, 0.1);
+
+
+			const materials = [
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex })
+			];
+
+			const backRest = new THREE.Mesh(geometry, materials);
+			backRest.scale.x = 0.1;
+			backRest.scale.y = 0.1;
+			backRest.scale.z = 0.1;
+
+			const seatGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+			const seat = new THREE.Mesh(seatGeometry, materials);
+			seat.scale.x = 0.1;
+			seat.scale.y = 0.1;
+			seat.scale.z = 0.1;
+			seat.rotation.x = -Math.PI / 2;
+
+
+			const hTex = loader.load("res/wood.png");
+			hTex.wrapS = THREE.RepeatWrapping;
+			hTex.wrapT = THREE.RepeatWrapping;
+			hTex.repeat.set(0.3, 0.3);
+
+			const woodmaterial = [
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex })
+			];
+
+			seat.position.set(0, -0.8, 3.5)
+
+			// Add the chair components to the newChair group
+			newChair.add(backRest, seat);
+
+
+			// Add the newChair group to the scene
+			return newChair;
+		}
+
+		function createChair() {
+			const newChair = new THREE.Group();
+
+			//create back rest of the chair
+			const length = 12, width = 8;
+
+			const shape = new THREE.Shape();
+			shape.moveTo(0, 0);
+			shape.lineTo(0, width);
+			shape.lineTo(length, width);
+			shape.lineTo(length, 0);
+			shape.lineTo(0, 0);
+
+			const extrudeSettings = {
+				steps: 2,
+				depth: 1,
+				bevelEnabled: true,
+				bevelThickness: 1,
+				bevelSize: 1,
+				bevelOffset: 2,
+				bevelSegments: 5
+			};
+
+			const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+			const vTex = loader.load("res/chair.png");
+			vTex.wrapS = THREE.RepeatWrapping;
+			vTex.wrapT = THREE.RepeatWrapping;
+			vTex.repeat.set(0.1, 0.1);
+
+			
+			const materials = [
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex }),
+				new THREE.MeshBasicMaterial({ map: vTex })
+			];
+
+
+			const backRest = new THREE.Mesh(geometry, materials);
+			backRest.scale.x = 0.1;
+			backRest.scale.y = 0.1;
+			backRest.scale.z = 0.1;
+
+			const seatGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+			const seatMaterial = new THREE.MeshBasicMaterial({ color: 0x4D452A });
+			const seat = new THREE.Mesh(seatGeometry, materials);
+			seat.scale.x = 0.1;
+			seat.scale.y = 0.1;
+			seat.scale.z = 0.1;
+			seat.rotation.x = -Math.PI / 2;
+
+
+			const hTex = loader.load("res/wood.png");
+			hTex.wrapS = THREE.RepeatWrapping;
+			hTex.wrapT = THREE.RepeatWrapping;
+			hTex.repeat.set(0.3, 0.3);
+
+			const woodmaterial = [
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex }),
+				new THREE.MeshBasicMaterial({ map: hTex })
+			];
+
+
+			const FRLgeometry = new THREE.CylinderGeometry(0.8, 0.5, 12, 24, 25, false, 0, 6.3);
+			const FRLmaterial = new THREE.MeshBasicMaterial({ color: 0x4D452A });
+			const frontRightLeg = new THREE.Mesh(FRLgeometry, woodmaterial);
+			frontRightLeg.scale.x = 0.1;
+			frontRightLeg.scale.y = 0.1;
+			frontRightLeg.scale.z = 0.1;
+
+			const FLLgeometry = new THREE.CylinderGeometry(0.8, 0.5, 12, 24, 25, false, 0, 6.3);
+			const FLLmaterial = new THREE.MeshBasicMaterial({ color: 0x4D452A });
+			const frontLeftLeg = new THREE.Mesh(FLLgeometry, woodmaterial);
+			frontLeftLeg.scale.x = 0.1;
+			frontLeftLeg.scale.y = 0.1;
+			frontLeftLeg.scale.z = 0.1;
+
+			const BRLgeometry = new THREE.CylinderGeometry(0.8, 0.5, 12, 24, 25, false, 0, 6.3);
+			const BRLmaterial = new THREE.MeshBasicMaterial({ color: 0x4D452A });
+			const backRightLeg = new THREE.Mesh(BRLgeometry, woodmaterial);
+			backRightLeg.scale.x = 0.1;
+			backRightLeg.scale.y = 0.1;
+			backRightLeg.scale.z = 0.1;
+
+			const BLLgeometry = new THREE.CylinderGeometry(0.8, 0.5, 12, 24, 25, false, 0, 6.3);
+			const BLLmaterial = new THREE.MeshBasicMaterial({ color: 0x4D452A });
+			const backLeftLeg = new THREE.Mesh(BLLgeometry, woodmaterial);
+			backLeftLeg.scale.x = 0.1;
+			backLeftLeg.scale.y = 0.1;
+			backLeftLeg.scale.z = 0.1;
+
+			
+
+			// Position of the chair components relative to the chair's origin (0, 0, 0)
+			const backRestPosition = new THREE.Vector3(0, 2, 0);
+			const seatPosition = new THREE.Vector3(0, 1.7, 0);
+			const frontRightLegPosition = new THREE.Vector3(1.2, 1, 0.1);
+
+			const frontLeftLegPosition = new THREE.Vector3(0, 1, 0.1);
+
+			const backRightLegPosition = new THREE.Vector3(1.2, 1, -0.8);
+
+			const backLeftLegPosition = new THREE.Vector3(0, 1, -0.8);
+
+
+			backRest.position.copy(backRestPosition);
+
+			seat.position.copy(seatPosition);
+
+			frontRightLeg.position.copy(frontRightLegPosition);
+
+			frontLeftLeg.position.copy(frontLeftLegPosition);
+
+			backRightLeg.position.copy(backRightLegPosition);
+
+			backLeftLeg.position.copy(backLeftLegPosition);
+
+			// Add the chair components to the newChair group
+			newChair.add(backRest, seat, frontRightLeg, frontLeftLeg, backLeftLeg, backRightLeg);
+
+			// Add the newChair group to the scene
+			return newChair;
+		}
+			
+			//this section adds objects to the scene
+			{
+			var obj = lamp()
+			obj.scale.set(1.1,1.1,1.1);
+			obj.position.set(floorDim.x*0.4,0,floorDim.y*0.3);
+			scene.add(obj);
+				
+			obj = tv();
+			obj.scale.set(2.5,1.5,1);
+			obj.position.set(0,1.5+wallHeight*0.5,0.25-floorDim.y*0.5);
+			scene.add(obj);
+		
+			obj = painting()
+			obj.position.set(floorDim.x*0.3,1.5+wallHeight*0.4,0.1-floorDim.y*0.5);
+			scene.add(obj);
+				
+			obj = createLRTable()
+			obj.position.set(0,1.00,-floorDim.y*0.3);
+			scene.add(obj)
+			
+			obj = createDiningTable()
+			obj.rotation.y = 1.57;
+			obj.position.set(0,2.0,floorDim.y*0.3);
+			scene.add(obj)
+			
+			obj = vase
+			obj.position.set(0,3.0,floorDim.y*0.25);
+			scene.add(obj)
+			
+			obj = createSofa()
+			obj.scale.set(2.0,1.0,0.5)
+			obj.rotation.y = 3.14;
+			obj.position.set(0,1.00,-floorDim.y*0.15);
+			scene.add(obj)
+			
+			obj = createChair()
+			obj.rotation.y = 3.14;
+			obj.position.set(0,0,floorDim.y*0.18);
+			scene.add(obj)
+			
+			obj = createChair()
+			obj.position.set(-2,0,floorDim.y*0.38);
+			scene.add(obj)
+			
+			obj = createChair()
+			obj.rotation.y = -1.57;
+			obj.position.set(-4.3,0,floorDim.y*0.3);
+			scene.add(obj)
+			
+			obj = createChair()
+			obj.rotation.y = -1.57;
+			obj.position.set(-4.3,0,floorDim.y*0.25);
+			scene.add(obj)
+			
+			obj = createChair()
+			obj.rotation.y = 1.57;
+			obj.position.set(2.7,0,floorDim.y*0.3);
+			scene.add(obj)
+			
+			obj = createChair()
+			obj.rotation.y = 1.57;
+			obj.position.set(2.7,0,floorDim.y*0.25);
+			scene.add(obj)
+			}
+		
+			// define variables to track collision and player movement
+            let previousMovement = new THREE.Vector3();
+            const playerSpeed = 1.0;
+	
+            //keyboard controls
+            document.onkeydown = function (e) {
+
+                switch (e.keyCode) {
+                    case 87: //W
+                        player.translateZ(-playerSpeed);
+						break;
+                    case 65: //A
+						player.translateX(-playerSpeed);
+						break;
+                    case 83: //S
+						player.translateZ(playerSpeed);
+						break;
+                    case 68: //D
+                        player.translateX(playerSpeed);
+						break;
+                    case 69: //E	
+                        player.rotation.y -= 0.1   //turn right
+                        break;
+                    case 81: //Q
+                        player.rotation.y += 0.1   //turn left
+                        break;
+                }
+            };
+
+            //this function is called every time the scene is changed and is primarily used 
+            //during coding for debugging and generally for rendering onto the scene
+            function animate() {
+                requestAnimationFrame(animate)
+				flameMaterial.uniforms.time.value += 1/60.0; //this allows the shader to animate
+                renderer.render(scene, camera)
+            }
+
+            animate()
+
+		</script>
+	</body>
+</html>
