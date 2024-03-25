@@ -1,5 +1,9 @@
 # Architectural-view-in-three.js
 
+To interact directly with the completed house, please download house.html and open in yur browser
+Camera direction: W - forward, S - backward, D - right, A - left
+Rotating camera: Q - leftward, E - rightward
+
 Developers: Benjamin, Oluwasesan & Xander
 Initial project breakdown for 2023-03-21
 
@@ -54,4 +58,4 @@ The other two members can work on adding animations or other interactive element
 	5) Documentation:
 Write comments and documentation to explain the different functions and components of the code.
 Create a README file explaining how to run the code and any other relevant information.
-![image](https://user-images.githubusercontent.com/79729264/226664550-4ce77e8f-bf5c-4501-9508-4248c52f91b0.png)
+
